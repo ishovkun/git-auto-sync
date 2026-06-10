@@ -43,6 +43,20 @@ func NewServiceWithDaemon(daemon service.Interface) (Service, error) {
 		deps = []string{"After=network-online.target syslog.target"}
 	}
 
+	// On macOS the default kardianos launchd template writes logs to
+	// /usr/local/var/log, which does not exist on Apple Silicon (Homebrew uses
+	// /opt/homebrew) and is not the conventional location for a user service.
+	// launchd silently refuses to start a job whose log paths can't be opened,
+	// so point the logs at ~/Library/Logs and make sure that directory exists.
+	// See https://github.com/GitJournal/git-auto-sync/issues/22
+	if runtime.GOOS == "darwin" {
+		launchdCfg, err := darwinLaunchdConfig("git-auto-sync-daemon")
+		if err != nil {
+			return Service{}, err
+		}
+		options["LaunchdConfig"] = launchdCfg
+	}
+
 	svcConfig := &service.Config{
 		Name:        "git-auto-sync-daemon",
 		DisplayName: "Git Auto Sync Daemon",
@@ -125,6 +139,82 @@ func (srv Service) Disable() error {
 
 	return nil
 }
+
+// LogDir returns the directory where the daemon's log files should live for
+// the current OS, creating it if it does not already exist. On Linux logs go
+// to the systemd journal and on Windows to the event log, so there is no
+// file-based log directory to manage and an empty string is returned.
+func LogDir() (string, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", tracerr.Wrap(err)
+		}
+		logDir := filepath.Join(home, "Library", "Logs")
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return "", tracerr.Wrap(err)
+		}
+		return logDir, nil
+	default:
+		return "", nil
+	}
+}
+
+// darwinLaunchdConfig builds a launchd plist template that writes the daemon's
+// stdout/stderr to ~/Library/Logs instead of the kardianos default of
+// /usr/local/var/log, and ensures that log directory exists.
+func darwinLaunchdConfig(name string) (string, error) {
+	logDir, err := LogDir()
+	if err != nil {
+		return "", err
+	}
+	outPath := filepath.Join(logDir, name+".out.log")
+	errPath := filepath.Join(logDir, name+".err.log")
+	return fmt.Sprintf(launchdConfigTemplate, outPath, errPath), nil
+}
+
+// launchdConfigTemplate mirrors the default template in kardianos/service but
+// with the StandardOutPath/StandardErrorPath log locations left as %s
+// placeholders so they can be filled in at install time. The {{...}} actions
+// are evaluated by kardianos against the service config.
+const launchdConfigTemplate = `<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
+"http://www.apple.com/DTDs/PropertyList-1.0.dtd" >
+<plist version='1.0'>
+  <dict>
+    <key>Label</key>
+    <string>{{html .Name}}</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>{{html .Path}}</string>
+    {{range .Config.Arguments}}
+      <string>{{html .}}</string>
+    {{end}}
+    </array>
+    {{if .UserName}}<key>UserName</key>
+    <string>{{html .UserName}}</string>{{end}}
+    {{if .ChRoot}}<key>RootDirectory</key>
+    <string>{{html .ChRoot}}</string>{{end}}
+    {{if .WorkingDirectory}}<key>WorkingDirectory</key>
+    <string>{{html .WorkingDirectory}}</string>{{end}}
+    <key>SessionCreate</key>
+    <{{bool .SessionCreate}}/>
+    <key>KeepAlive</key>
+    <{{bool .KeepAlive}}/>
+    <key>RunAtLoad</key>
+    <{{bool .RunAtLoad}}/>
+    <key>Disabled</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>%s</string>
+    <key>StandardErrorPath</key>
+    <string>%s</string>
+
+  </dict>
+</plist>
+`
 
 func (srv Service) Status() error {
 	status, err := srv.Service.Status()
