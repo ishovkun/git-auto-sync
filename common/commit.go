@@ -90,11 +90,15 @@ func GitCommand(repoConfig RepoConfig, args []string) (bytes.Buffer, error) {
 	statusCmd.Dir = repoPath
 	statusCmd.Stdout = &outb
 	statusCmd.Stderr = &errb
-	statusCmd.Env = toEnvString(repoConfig)
+	env := toEnvString(repoConfig)
+	statusCmd.Env = env
 	err := statusCmd.Run()
 
-	if hasEnvVariable(os.Environ(), "SSH_AUTH_SOCK") && !hasEnvVariable(repoConfig.Env, "SSH_AUTH_SOCK") {
-		fmt.Println("WARNING: SSH_AUTH_SOCK env variable isn't being passed")
+	// toEnvString forwards SSH_AUTH_SOCK from the daemon's environment, so it's
+	// only genuinely missing (and ssh auth will fail) when it's absent there
+	// and not explicitly configured for the repo.
+	if !hasEnvVariable(env, "SSH_AUTH_SOCK") {
+		fmt.Println("WARNING: SSH_AUTH_SOCK is not set, ssh-based git operations may fail")
 	}
 
 	if err != nil {
@@ -107,12 +111,18 @@ func GitCommand(repoConfig RepoConfig, args []string) (bytes.Buffer, error) {
 
 func toEnvString(repoConfig RepoConfig) []string {
 	vals := repoConfig.Env
-	vals = append(vals, repoConfig.Env...)
 
+	// Forward a small set of variables from the daemon's own environment that
+	// git/ssh need to authenticate and find the user's config. SSH_AUTH_SOCK is
+	// essential: launchd injects it into the daemon, but without forwarding it
+	// to the git subprocess ssh can't reach the agent and pushes fail with
+	// "internal error performing authentication". Variables explicitly set on
+	// the repo config take precedence and are not overridden.
+	forward := map[string]bool{"HOME": true, "SSH_AUTH_SOCK": true}
 	for _, s := range os.Environ() {
-		parts := strings.Split(s, "=")
+		parts := strings.SplitN(s, "=", 2)
 		k := parts[0]
-		if k == "HOME" {
+		if forward[k] && !hasEnvVariable(repoConfig.Env, k) {
 			vals = append(vals, s)
 		}
 	}
