@@ -48,6 +48,40 @@ The background daemon will be started / stopped automatically if there are any r
 This process will monitor the filesystem, poll every 10 minutes, and additionally try to sync on resuming from a suspend. The latter
 two are done to pick up changes from the remote.
 
+### Menubar Widget (macOS)
+
+The daemon runs silently in the background. On macOS you can add a menubar
+indicator showing whether the daemon is up and the result of the most recent
+sync for each watched repo (with the git error if a sync failed), plus a
+"Sync now" action. It uses [SwiftBar](https://swiftbar.app).
+
+The daemon writes the latest sync result for each repo to
+`~/Library/Application Support/git-auto-sync/status.json`; the plugin in
+[`contrib/swiftbar/`](contrib/swiftbar/) reads it and renders the menu.
+
+1. Install SwiftBar:
+
+   ```bash
+   brew install --cask swiftbar
+   ```
+
+2. Symlink the plugin into SwiftBar's plugin directory (the `30s` in the
+   filename tells SwiftBar to refresh every 30 seconds):
+
+   ```bash
+   PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar"
+   mkdir -p "$PLUGIN_DIR"
+   ln -sf "$PWD/contrib/swiftbar/gitautosync.30s.sh" "$PLUGIN_DIR/gitautosync.30s.sh"
+   ```
+
+3. Launch SwiftBar and, when prompted, select that directory as the plugin
+   folder (`~/Library/Application Support/SwiftBar`). To enable it on login,
+   turn on "Launch at Login" in SwiftBar's preferences.
+
+The plugin assumes `git-auto-sync` is installed at `~/go/bin` and requires
+`jq` (preinstalled on macOS); adjust the paths at the top of the script if
+yours differ.
+
 ### Merge Conflicts
 
 GitAutoSync current only supports rebases, and doesn't yet attempt to do a merge. In the case of a
