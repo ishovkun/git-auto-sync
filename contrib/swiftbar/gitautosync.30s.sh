@@ -29,21 +29,25 @@ else
   RUNNING=0
 fi
 
-# --- determine overall health ------------------------------------------------
-# 0 = all good, 1 = a repo failed its last sync, 2 = daemon not running.
-HEALTH=0
-[ "$RUNNING" -eq 0 ] && HEALTH=2
+# --- menubar icon ------------------------------------------------------------
+# Render the Git logo as a monochrome template image (black in light mode,
+# white in dark mode). The PNG lives next to this script; resolve through the
+# symlink SwiftBar loads us as so we can find it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$dir/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ICON_FILE="$SCRIPT_DIR/git-icon.png"
 
-if [ "$RUNNING" -eq 1 ] && [ -f "$STATUS_FILE" ] && [ -n "$JQ" ]; then
-  ANY_FAIL=$("$JQ" -r '[.repos[] | select(.ok == false)] | length' "$STATUS_FILE" 2>/dev/null)
-  [ "${ANY_FAIL:-0}" -gt 0 ] && HEALTH=1
+if [ -f "$ICON_FILE" ]; then
+  ICON=$(base64 -i "$ICON_FILE" | tr -d '\n')
+  echo " | templateImage=$ICON"
+else
+  echo " | sfimage=arrow.triangle.branch"
 fi
-
-case "$HEALTH" in
-  0) echo " | sfimage=arrow.triangle.2.circlepath.circle.fill sfcolor=green" ;;
-  1) echo " | sfimage=exclamationmark.triangle.fill sfcolor=orange" ;;
-  2) echo " | sfimage=xmark.circle.fill sfcolor=red" ;;
-esac
 
 echo "---"
 
