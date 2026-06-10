@@ -2,13 +2,22 @@ package common
 
 import (
 	"errors"
+	"time"
 
 	"github.com/gen2brain/beeep"
 	"github.com/ztrue/tracerr"
 )
 
-// FIXME: Add logs for when we commit, pull, and push
+// AutoSync runs a full sync and records the outcome to the status file so the
+// menubar plugin (and any other observer) can see the latest result.
 func AutoSync(repoConfig RepoConfig) error {
+	err := autoSync(repoConfig)
+	_ = RecordSync(repoConfig.RepoPath, err, time.Now())
+	return err
+}
+
+// FIXME: Add logs for when we commit, pull, and push
+func autoSync(repoConfig RepoConfig) error {
 	var err error
 	err = ensureGitAuthor(repoConfig)
 	if err != nil {
