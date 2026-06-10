@@ -45,9 +45,10 @@ func main() {
 				},
 			},
 			{
-				Name:    "sync",
-				Aliases: []string{"s"},
-				Usage:   "Sync a repo right now",
+				Name:      "sync",
+				Aliases:   []string{"s"},
+				Usage:     "Sync a repo right now",
+				ArgsUsage: "[path]",
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
 						Name:    "env",
@@ -56,12 +57,18 @@ func main() {
 					},
 				},
 				Action: func(ctx *cli.Context) error {
-					repoPath, err := os.Getwd()
-					if err != nil {
-						return tracerr.Wrap(err)
+					// Sync the repo at the given path, defaulting to the current
+					// directory when no path is supplied.
+					repoPath := ctx.Args().First()
+					if repoPath == "" {
+						cwd, err := os.Getwd()
+						if err != nil {
+							return tracerr.Wrap(err)
+						}
+						repoPath = cwd
 					}
 
-					repoPath, err = isValidGitRepo(repoPath)
+					repoPath, err := isValidGitRepo(repoPath)
 					if err != nil {
 						return tracerr.Wrap(err)
 					}
