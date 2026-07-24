@@ -29,7 +29,7 @@ func (d *Daemon) run() {
 		wg.Add(1)
 
 		fmt.Println("Monitoring", repoPath)
-		go watchForChanges(&wg, repoPath)
+		go watchForChanges(&wg, repoPath, config.Envs)
 	}
 
 	wg.Wait()
@@ -60,13 +60,14 @@ func main() {
 }
 
 // FIXME: pass some kind of channel which tells this when to close!
-func watchForChanges(wg *sync.WaitGroup, repoPath string) {
+func watchForChanges(wg *sync.WaitGroup, repoPath string, envs []string) {
 	defer wg.Done()
 
 	cfg, err := common.NewRepoConfig(repoPath)
 	if err != nil {
 		log.Println(err)
 	}
+	cfg.Env = append(cfg.Env, envs...)
 
 	err = common.WatchForChanges(cfg)
 	if err != nil {

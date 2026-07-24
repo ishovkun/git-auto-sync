@@ -131,8 +131,14 @@ func main() {
 				Usage:   "Interact with the background daemon",
 				Subcommands: []*cli.Command{
 					{
-						Name:   "status",
-						Usage:  "Show the Daemon's status",
+						Name:  "status",
+						Usage: "Show the Daemon's status",
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "json",
+								Usage: "Print machine-readable daemon and repository status",
+							},
+						},
 						Action: daemonStatus,
 					},
 					{

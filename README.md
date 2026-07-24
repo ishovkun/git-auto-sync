@@ -82,6 +82,38 @@ The plugin assumes `git-auto-sync` is installed at `~/go/bin` and requires
 `jq` (preinstalled on macOS); adjust the paths at the top of the script if
 yours differ.
 
+### Plasma Widget (Linux)
+
+KDE Plasma 6 users can add a panel widget with the same live status as the
+macOS menubar widget. It shows whether the daemon is running, the last sync
+result and error for every watched repository, and provides per-repository and
+"Sync all" actions.
+
+Build and install `git-auto-sync` and its daemon first, then install the
+plasmoid:
+
+```bash
+make install
+kpackagetool6 --type Plasma/Applet --install \
+  contrib/plasma/org.gitjournal.git-auto-sync
+```
+
+Add **Git Auto Sync** from Plasma's **Add Widgets…** panel. The widget expects
+`git-auto-sync` to be on Plasma's `PATH`. If it is not (a common case for
+`~/go/bin`), open the widget settings and enter the full executable path, such
+as `/home/you/go/bin/git-auto-sync`.
+
+To update an already installed development copy:
+
+```bash
+kpackagetool6 --type Plasma/Applet --upgrade \
+  contrib/plasma/org.gitjournal.git-auto-sync
+```
+
+The widget targets Plasma 6. It refreshes every 30 seconds by default. Its
+settings let you configure the executable path, refresh interval, panel icon
+scale, and Git author name/email used for automatic commits.
+
 ### Merge Conflicts
 
 GitAutoSync current only supports rebases, and doesn't yet attempt to do a merge. In the case of a

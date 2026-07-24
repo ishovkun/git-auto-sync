@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kardianos/service"
 	"gotest.tools/v3/assert"
 )
 
@@ -33,4 +34,24 @@ func Test_DarwinLaunchdConfigLogPath(t *testing.T) {
 	assert.Assert(t, strings.Contains(plist, filepath.Join(logDir, "git-auto-sync-daemon.out.log")))
 	assert.Assert(t, strings.Contains(plist, filepath.Join(logDir, "git-auto-sync-daemon.err.log")))
 	assert.Assert(t, !strings.Contains(plist, "/usr/local/var/log"))
+}
+
+func Test_LinuxUserServiceTargetsDefaultTarget(t *testing.T) {
+	assert.Assert(t, strings.Contains(linuxSystemdConfigTemplate, "WantedBy=default.target"))
+	assert.Assert(t, !strings.Contains(linuxSystemdConfigTemplate, "WantedBy=multi-user.target"))
+	assert.Assert(t, strings.Contains(linuxSystemdConfigTemplate, "ExecStart={{.Path|cmdEscape}}"))
+}
+
+func Test_ClassifyLinuxUserServiceStatus(t *testing.T) {
+	status, err := classifyLinuxUserServiceStatus("active", true)
+	assert.NilError(t, err)
+	assert.Equal(t, status, service.StatusRunning)
+
+	status, err = classifyLinuxUserServiceStatus("inactive", true)
+	assert.NilError(t, err)
+	assert.Equal(t, status, service.StatusStopped)
+
+	status, err = classifyLinuxUserServiceStatus("inactive", false)
+	assert.ErrorContains(t, err, "not installed")
+	assert.Equal(t, status, service.StatusUnknown)
 }

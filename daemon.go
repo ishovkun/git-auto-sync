@@ -1,15 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/GitJournal/git-auto-sync/common"
 	cfg "github.com/GitJournal/git-auto-sync/common/config"
+	"github.com/kardianos/service"
 	cli "github.com/urfave/cli/v2"
 	"github.com/ztrue/tracerr"
 	"golang.org/x/exp/slices"
@@ -24,12 +27,16 @@ func daemonStatus(ctx *cli.Context) error {
 		return tracerr.Wrap(err)
 	}
 
-	err = s.Status()
+	config, err := cfg.Read()
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
 
-	config, err := cfg.Read()
+	if ctx.Bool("json") {
+		return printDaemonStatusJSON(s, config)
+	}
+
+	err = s.Status()
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -41,6 +48,67 @@ func daemonStatus(ctx *cli.Context) error {
 
 	// FIXME: Print out if there are any 'rebasing' issues and we are paused
 
+	return nil
+}
+
+type daemonStatusSnapshot struct {
+	Daemon      string               `json:"daemon"`
+	DaemonError string               `json:"daemon_error,omitempty"`
+	Repos       []daemonRepoSnapshot `json:"repos"`
+}
+
+type daemonRepoSnapshot struct {
+	Repo         string    `json:"repo"`
+	Synced       bool      `json:"synced"`
+	OK           bool      `json:"ok"`
+	Error        string    `json:"error,omitempty"`
+	SyncedAt     time.Time `json:"synced_at,omitempty"`
+	SyncedAtUnix int64     `json:"synced_at_unix,omitempty"`
+}
+
+func printDaemonStatusJSON(s common.Service, config *cfg.ConfigV1) error {
+	snapshot := daemonStatusSnapshot{
+		Daemon: "unknown",
+		Repos:  make([]daemonRepoSnapshot, 0, len(config.Repos)),
+	}
+
+	status, err := s.CurrentStatus()
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not installed") {
+			snapshot.Daemon = "stopped"
+		} else {
+			snapshot.DaemonError = err.Error()
+		}
+	} else {
+		switch status {
+		case service.StatusRunning:
+			snapshot.Daemon = "running"
+		case service.StatusStopped:
+			snapshot.Daemon = "stopped"
+		}
+	}
+
+	syncStatus, err := common.ReadStatus()
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	for _, repoPath := range config.Repos {
+		repo := daemonRepoSnapshot{Repo: repoPath}
+		if recorded, ok := syncStatus.Repos[repoPath]; ok {
+			repo.Synced = true
+			repo.OK = recorded.OK
+			repo.Error = recorded.Error
+			repo.SyncedAt = recorded.SyncedAt
+			repo.SyncedAtUnix = recorded.SyncedAtUnix
+		}
+		snapshot.Repos = append(snapshot.Repos, repo)
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(snapshot); err != nil {
+		return tracerr.Wrap(err)
+	}
 	return nil
 }
 
@@ -213,6 +281,19 @@ func daemonEnv(ctx *cli.Context) error {
 	}
 
 	fmt.Println(strings.Join(config.Envs, "\n"))
+
+	// The daemon reads environment values at startup. Reinstall/restart it when
+	// repositories are active so changes made by the Plasma applet take effect
+	// immediately.
+	if len(config.Repos) > 0 {
+		s, err := common.NewService()
+		if err != nil {
+			return tracerr.Wrap(err)
+		}
+		if err := s.Enable(); err != nil {
+			return tracerr.Wrap(err)
+		}
+	}
 
 	return nil
 }

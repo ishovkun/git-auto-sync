@@ -13,8 +13,8 @@ import (
 
 // RepoStatus is the outcome of the most recent sync attempt for one repo.
 type RepoStatus struct {
-	Repo string `json:"repo"`
-	OK   bool   `json:"ok"`
+	Repo  string `json:"repo"`
+	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	// SyncedAt is the human-readable timestamp; SyncedAtUnix is the same moment
 	// as an epoch second so shell consumers can compute "N minutes ago" without
@@ -87,7 +87,28 @@ func RecordSync(repoPath string, syncErr error, at time.Time) error {
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
-	if err := os.WriteFile(statusFilePath(), data, 0644); err != nil {
+
+	// Readers live in other processes (SwiftBar and Plasma), so replace the
+	// snapshot atomically rather than exposing a partially written JSON file.
+	tmp, err := os.CreateTemp(configPath, ".status-*.tmp")
+	if err != nil {
+		return tracerr.Wrap(err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return tracerr.Wrap(err)
+	}
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		return tracerr.Wrap(err)
+	}
+	if err := tmp.Close(); err != nil {
+		return tracerr.Wrap(err)
+	}
+	if err := os.Rename(tmpPath, statusFilePath()); err != nil {
 		return tracerr.Wrap(err)
 	}
 	return nil

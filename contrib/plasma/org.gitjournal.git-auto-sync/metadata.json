@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "igshov@gmail.com",
+                "Name": "Igor Shovkun"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Monitor git-auto-sync and sync watched repositories",
+        "Icon": "vcs-normal",
+        "Id": "org.gitjournal.git-auto-sync",
+        "License": "Apache-2.0",
+        "Name": "Git Auto Sync",
+        "Version": "1.4.0",
+        "Website": "https://github.com/GitJournal/git-auto-sync"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

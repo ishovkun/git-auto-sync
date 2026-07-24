@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 type Service struct {
 	Service service.Service
+	name    string
 }
 
 type emptyDaemon struct{}
@@ -38,9 +40,11 @@ func NewServiceWithDaemon(daemon service.Interface) (Service, error) {
 	exDirPath := filepath.Dir(ex)
 	executablePath := filepath.Join(exDirPath, "git-auto-sync-daemon")
 
-	deps := []string{}
 	if runtime.GOOS == "linux" {
-		deps = []string{"After=network-online.target syslog.target"}
+		// kardianos/service's systemd template targets multi-user.target even
+		// for user services. User managers normally start default.target, so
+		// such a service can work immediately but fail to return after login.
+		options["SystemdScript"] = linuxSystemdConfigTemplate
 	}
 
 	// On macOS the default kardianos launchd template writes logs to
@@ -62,9 +66,8 @@ func NewServiceWithDaemon(daemon service.Interface) (Service, error) {
 		DisplayName: "Git Auto Sync Daemon",
 		Description: "Background Process for Auto Syncing Git Repos",
 
-		Executable:   executablePath,
-		Dependencies: deps,
-		Option:       options,
+		Executable: executablePath,
+		Option:     options,
 	}
 
 	s, err := service.New(daemon, svcConfig)
@@ -72,7 +75,7 @@ func NewServiceWithDaemon(daemon service.Interface) (Service, error) {
 		return Service{}, tracerr.Wrap(err)
 	}
 
-	return Service{Service: s}, nil
+	return Service{Service: s, name: svcConfig.Name}, nil
 }
 
 func NewService() (Service, error) {
@@ -82,7 +85,7 @@ func NewService() (Service, error) {
 func (srv Service) Enable() error {
 	s := srv.Service
 
-	status, err := s.Status()
+	status, err := srv.CurrentStatus()
 	if err != nil {
 		if !strings.Contains(err.Error(), "the service is not installed") {
 			return tracerr.Wrap(err)
@@ -216,8 +219,24 @@ const launchdConfigTemplate = `<?xml version='1.0' encoding='UTF-8'?>
 </plist>
 `
 
+// linuxSystemdConfigTemplate is used for the per-user Linux service. In
+// particular, WantedBy must be default.target; multi-user.target belongs to the
+// system manager and is not normally activated by a user's systemd instance.
+const linuxSystemdConfigTemplate = `[Unit]
+Description={{.Description}}
+ConditionFileIsExecutable={{.Path|cmdEscape}}
+
+[Service]
+ExecStart={{.Path|cmdEscape}}{{range .Arguments}} {{.|cmd}}{{end}}
+Restart={{.Restart}}
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+`
+
 func (srv Service) Status() error {
-	status, err := srv.Service.Status()
+	status, err := srv.CurrentStatus()
 	if err != nil {
 		return tracerr.Wrap(err)
 	}
@@ -233,4 +252,57 @@ func (srv Service) Status() error {
 	}
 
 	return nil
+}
+
+// CurrentStatus works around kardianos/service v1.2.1 querying the system
+// manager from Status even when UserService is enabled. Install/start already
+// use --user; without the matching status query Linux always reports that the
+// successfully installed user service does not exist.
+func (srv Service) CurrentStatus() (service.Status, error) {
+	if runtime.GOOS != "linux" {
+		return srv.Service.Status()
+	}
+
+	name := srv.name
+	if name == "" {
+		name = "git-auto-sync-daemon"
+	}
+	unitName := name + ".service"
+	output, commandErr := exec.Command("systemctl", "--user", "is-active", unitName).CombinedOutput()
+	state := strings.TrimSpace(string(output))
+
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		return service.StatusUnknown, tracerr.Wrap(homeErr)
+	}
+	_, statErr := os.Stat(filepath.Join(home, ".config", "systemd", "user", unitName))
+	installed := statErr == nil
+
+	status, err := classifyLinuxUserServiceStatus(state, installed)
+	if err != nil {
+		return status, err
+	}
+	if commandErr != nil && status == service.StatusUnknown {
+		return status, tracerr.Wrap(commandErr)
+	}
+	return status, nil
+}
+
+func classifyLinuxUserServiceStatus(state string, installed bool) (service.Status, error) {
+	switch state {
+	case "active", "activating", "reloading":
+		return service.StatusRunning, nil
+	case "inactive", "deactivating":
+		if installed {
+			return service.StatusStopped, nil
+		}
+		return service.StatusUnknown, service.ErrNotInstalled
+	case "failed":
+		return service.StatusUnknown, fmt.Errorf("service in failed state")
+	default:
+		if !installed {
+			return service.StatusUnknown, service.ErrNotInstalled
+		}
+		return service.StatusUnknown, nil
+	}
 }

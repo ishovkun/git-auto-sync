@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="executable" type="String">
+      <label>Path to the git-auto-sync executable</label>
+      <default>git-auto-sync</default>
+    </entry>
+    <entry name="refreshInterval" type="Int">
+      <label>Status refresh interval in seconds</label>
+      <default>30</default>
+      <min>5</min>
+      <max>3600</max>
+    </entry>
+    <entry name="iconScale" type="Int">
+      <label>Panel icon scale in percent</label>
+      <default>85</default>
+      <min>40</min>
+      <max>140</max>
+    </entry>
+    <entry name="authorName" type="String">
+      <label>Git author name</label>
+      <default></default>
+    </entry>
+    <entry name="authorEmail" type="String">
+      <label>Git author email</label>
+      <default></default>
+    </entry>
+  </group>
+</kcfg>

@@ -1,4 +1,9 @@
-.PHONY: lint
+.PHONY: lint test install
+
+GO_BIN := $(shell go env GOBIN)
+ifeq ($(strip $(GO_BIN)),)
+GO_BIN := $(shell go env GOPATH)/bin
+endif
 	
 lint:
 	golangci-lint run
@@ -8,5 +13,5 @@ test:
 
 install:
 	go install .
-	cd daemon && go build -o git-auto-sync-daemon .
-	cd daemon && mv git-auto-sync-daemon ${GOPATH}/bin/
+	mkdir -p "$(GO_BIN)"
+	go build -o "$(GO_BIN)/git-auto-sync-daemon" ./daemon
