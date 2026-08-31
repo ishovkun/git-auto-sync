@@ -10,6 +10,7 @@ lint:
 
 test:
 	go test ./...
+	./contrib/swiftbar/gitautosync_test.sh
 
 install:
 	go install .

@@ -29,10 +29,17 @@ else
   RUNNING=0
 fi
 
+# --- latest sync failed? -----------------------------------------------------
+HAS_FAILURE=0
+if [ -f "$STATUS_FILE" ] && [ -n "$JQ" ]; then
+  if "$JQ" -e '[.repos[]? | select(.ok == false)] | length > 0' "$STATUS_FILE" >/dev/null 2>&1; then
+    HAS_FAILURE=1
+  fi
+fi
+
 # --- menubar icon ------------------------------------------------------------
-# Render the Git logo as a monochrome template image (black in light mode,
-# white in dark mode). The PNG lives next to this script; resolve through the
-# symlink SwiftBar loads us as so we can find it.
+# Resolve through the symlink SwiftBar loads us as so we can find the normal
+# Git logo next to this script.
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
   dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
@@ -42,7 +49,12 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ICON_FILE="$SCRIPT_DIR/git-icon.png"
 
-if [ -f "$ICON_FILE" ]; then
+# A failed sync or stopped daemon needs to be visible without opening the
+# dropdown. Palette order makes the SF Symbol a red circle with a white cross.
+if [ "$RUNNING" -eq 0 ] || [ "$HAS_FAILURE" -eq 1 ]; then
+  ERROR_ICON_CONFIG=$(printf '%s' '{"renderingMode":"Palette","colors":["white","red"]}' | base64 | tr -d '\n')
+  echo " | sfimage=xmark.circle.fill sfconfig=$ERROR_ICON_CONFIG"
+elif [ -f "$ICON_FILE" ]; then
   ICON=$(base64 -i "$ICON_FILE" | tr -d '\n')
   echo " | templateImage=$ICON"
 else
