@@ -116,9 +116,11 @@ scale, and Git author name/email used for automatic commits.
 
 ### Merge Conflicts
 
-GitAutoSync current only supports rebases, and doesn't yet attempt to do a merge. In the case of a
-rebase conflict, it will abort and stop syncing that repo. It will send a system notification
-to inform you of the conflict.
+GitAutoSync currently only supports rebases and doesn't yet attempt to do a merge. In the case of a
+rebase conflict, it aborts the rebase and records the failed sync. The daemon keeps watching the
+repository and retries after another file change or at the periodic sync interval. A new sync
+failure also sends a system notification; repeated retries of the same failure do not send duplicate
+notifications.
 
 ### Ignored Files
 

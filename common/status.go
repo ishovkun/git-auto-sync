@@ -64,18 +64,26 @@ func ReadStatus() (Status, error) {
 // given repo. A nil syncErr records success; otherwise the error message is
 // stored. Status reporting is best-effort and never affects sync behaviour.
 func RecordSync(repoPath string, syncErr error, at time.Time) error {
+	_, _, err := recordSync(repoPath, syncErr, at)
+	return err
+}
+
+// recordSync also returns the previous entry so callers can react to status
+// transitions without racing another repository's status update.
+func recordSync(repoPath string, syncErr error, at time.Time) (RepoStatus, bool, error) {
 	statusMu.Lock()
 	defer statusMu.Unlock()
 
 	configPath := configdir.LocalConfig("git-auto-sync")
 	if err := configdir.MakePath(configPath); err != nil {
-		return tracerr.Wrap(err)
+		return RepoStatus{}, false, tracerr.Wrap(err)
 	}
 
 	status, err := ReadStatus()
 	if err != nil {
-		return err
+		return RepoStatus{}, false, err
 	}
+	previous, hadPrevious := status.Repos[repoPath]
 
 	entry := RepoStatus{Repo: repoPath, OK: syncErr == nil, SyncedAt: at, SyncedAtUnix: at.Unix()}
 	if syncErr != nil {
@@ -85,31 +93,31 @@ func RecordSync(repoPath string, syncErr error, at time.Time) error {
 
 	data, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
 
 	// Readers live in other processes (SwiftBar and Plasma), so replace the
 	// snapshot atomically rather than exposing a partially written JSON file.
 	tmp, err := os.CreateTemp(configPath, ".status-*.tmp")
 	if err != nil {
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
 	if err := tmp.Chmod(0644); err != nil {
 		_ = tmp.Close()
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
 	if err := tmp.Close(); err != nil {
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
 	if err := os.Rename(tmpPath, statusFilePath()); err != nil {
-		return tracerr.Wrap(err)
+		return previous, hadPrevious, tracerr.Wrap(err)
 	}
-	return nil
+	return previous, hadPrevious, nil
 }
